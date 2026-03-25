@@ -100,15 +100,12 @@ export function EmptyState() {
 				<Logo className="relative size-20 opacity-80" />
 			</div>
 			<div>
-				<h2 className="text-base font-medium text-foreground mb-1">Page Agent Ext</h2>
+				<h2 className="text-base font-medium text-foreground mb-1">
+					{browser.i18n.getMessage('extName')}
+				</h2>
 				<TypingAnimation
 					className="text-sm text-muted-foreground"
-					words={[
-						'Enter a task to automate this page',
-						'Execute multi-page tasks',
-						'Call this extension from your web page',
-						'Use this extension in your own agents',
-					]}
+					words={[browser.i18n.getMessage('extNameDesc'), browser.i18n.getMessage('extNameDesc1')]}
 					cursorStyle="underscore"
 					loop
 					typeSpeed={20}

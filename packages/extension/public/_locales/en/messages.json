@@ -1,6 +1,12 @@
 {
 	"extName": {
-		"message": "Page Agent Ext"
+		"message": "jinjiaoyun agent"
+	},
+	"extNameDesc": {
+		"message": "Input a task to automate this page"
+	},
+	"extNameDesc1": {
+		"message": "Execute multi page tasks"
 	},
 	"extDescription": {
 		"message": "AI-powered browser automation assistant. Control web pages with natural language."
