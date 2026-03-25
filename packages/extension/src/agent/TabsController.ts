@@ -11,6 +11,14 @@ function sendMessage(message: {
 	action: TabAction
 	payload?: any
 }): Promise<any> {
+	if ('electronAPI' in window && window.electronAPI && message.type === 'TAB_CONTROL') {
+		//如果在客户端里 并且消息是tabs相关的  就按客户端的套路发消息
+		const electronAPI: any = window.electronAPI
+		return electronAPI.sendMessage(message).catch((error: any) => {
+			console.error(PREFIX, message.action, error)
+			return null
+		})
+	}
 	return chrome.runtime.sendMessage(message).catch((error) => {
 		console.error(PREFIX, message.action, error)
 		return null
@@ -167,7 +175,7 @@ export class TabsController extends EventTarget {
 		}
 
 		await this.updateCurrentTabId(tabId)
-
+		chrome.tabs.update(tabId, { active: true })
 		return `✅ Switched to tab ID ${tabId}.`
 	}
 
@@ -264,16 +272,26 @@ export class TabsController extends EventTarget {
 
 	async summarizeTabs(): Promise<string> {
 		const summaries = [`| Tab ID | URL | Title | Current |`, `|-----|-----|-----|-----|`]
-		for (const tab of this.tabs) {
-			const { title, url } = await this.getTabInfo(tab.id)
+		//获取所有的tabs 不局限在当前tabGroup
+		const tabs = await chrome.tabs.query({ windowId: -2 })
+		for (const tab of tabs) {
+			const { title, url } = tab
 			summaries.push(
 				`| ${tab.id} | ${url} | ${title} | ${this.currentTabId === tab.id ? '✅' : ''} |`
 			)
 		}
-		if (!this.tabs.length) {
+		if (!tabs.length) {
 			summaries.push('\nNo tabs available. Open a tab if needed.')
 		}
-
+		this.tabs = tabs.map((element) => {
+			return {
+				id: element.id,
+				isInitial: element.id === this.currentTabId,
+				url: element.url,
+				title: element.title,
+				status: 'complete',
+			} as TabMeta
+		})
 		return summaries.join('\n')
 	}
 
