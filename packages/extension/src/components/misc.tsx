@@ -113,7 +113,7 @@ export function EmptyState() {
 					pauseDelay={3000}
 				/>
 			</div>
-			<div className="flex items-center gap-3 mt-1 text-muted-foreground">
+			{/* <div className="flex items-center gap-3 mt-1 text-muted-foreground">
 				<a
 					href="https://github.com/alibaba/page-agent"
 					target="_blank"
@@ -143,7 +143,7 @@ export function EmptyState() {
 				>
 					<Globe className="size-4" />
 				</a>
-			</div>
+			</div> */}
 		</div>
 	)
 }

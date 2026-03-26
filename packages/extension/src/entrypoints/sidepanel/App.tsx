@@ -142,7 +142,7 @@ export default function App() {
 				</div>
 				<div className="flex items-center gap-1">
 					<StatusDot status={status} />
-					<Button
+					{/* <Button
 						variant="ghost"
 						size="icon-sm"
 						onClick={() => setView({ name: 'history' })}
@@ -157,7 +157,7 @@ export default function App() {
 						className="cursor-pointer"
 					>
 						<Settings className="size-3.5" />
-					</Button>
+					</Button> */}
 				</div>
 			</header>
 

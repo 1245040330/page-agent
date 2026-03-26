@@ -44,7 +44,7 @@ export default defineBackground(() => {
 
 	// setup
 
-	chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {})
+	// chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {})
 })
 
 async function openOrFocusHubTab(wsPort: number) {
