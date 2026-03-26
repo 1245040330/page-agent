@@ -1,17 +1,17 @@
 {
 	"extName": {
-		"message": "jinjiaoyun agent"
+		"message": "金教云智能体"
 	},
 	"extNameDesc": {
-		"message": "Input a task to automate this page"
+		"message": "输入任务以自动化此页面"
 	},
 	"extNameDesc1": {
-		"message": "Execute multi page tasks"
+		"message": "执行多页任务"
 	},
 	"extDescription": {
-		"message": "AI-powered browser automation assistant. Control web pages with natural language."
+		"message": "AI 驱动的浏览器自动化助手，用自然语言控制网页。"
 	},
 	"extActionTitle": {
-		"message": "Open Page Agent"
+		"message": "打开 Page Agent"
 	}
 }
