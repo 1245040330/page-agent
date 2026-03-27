@@ -48,21 +48,16 @@ export function TypingAnimation({
 	const elementRef = useRef<HTMLElement | null>(null)
 	const isInView = useInView(elementRef as React.RefObject<Element>, {
 		amount: 0.3,
+		once: true,
 	})
 
-	const wordsToAnimate = useMemo(() => {
-		const rawWords = words || (children ? [children] : [])
-		return rawWords.filter((word): word is string => Boolean(word))
-	}, [words, children])
+	const wordsToAnimate = useMemo(() => words || (children ? [children] : []), [words, children])
 	const hasMultipleWords = wordsToAnimate.length > 1
 
 	const typingSpeed = typeSpeed || duration
 	const deletingSpeed = deleteSpeed || typingSpeed / 2
 
-	// Only start when in view AND have valid content
-	const shouldStart = startOnView
-		? isInView && wordsToAnimate.length > 0
-		: wordsToAnimate.length > 0
+	const shouldStart = startOnView ? isInView : true
 
 	useEffect(() => {
 		if (!shouldStart || wordsToAnimate.length === 0) return
@@ -137,7 +132,6 @@ export function TypingAnimation({
 
 	const shouldShowCursor =
 		showCursor &&
-		wordsToAnimate.length > 0 &&
 		!isComplete &&
 		(hasMultipleWords || loop || currentCharIndex < currentWordGraphemes.length)
 
