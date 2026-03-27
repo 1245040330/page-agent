@@ -192,7 +192,7 @@ export default function App() {
 				<InputGroup className="relative rounded-lg">
 					<InputGroupTextarea
 						ref={textareaRef}
-						placeholder="Describe your task... (Enter to send)"
+						placeholder={browser.i18n.getMessage('placeholderText')}
 						value={inputValue}
 						onChange={(e) => setInputValue(e.target.value)}
 						onKeyDown={handleKeyDown}

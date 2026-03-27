@@ -13,5 +13,8 @@
 	},
 	"extActionTitle": {
 		"message": "打开 Page Agent"
+	},
+	"placeholderText":{
+		"message": "描述你的任务…… (回车发送)"
 	}
 }
