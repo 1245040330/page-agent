@@ -108,6 +108,7 @@ export function EmptyState() {
 					words={[browser.i18n.getMessage('extNameDesc'), browser.i18n.getMessage('extNameDesc1')]}
 					cursorStyle="underscore"
 					loop
+					startOnView={false}
 					typeSpeed={20}
 					deleteSpeed={10}
 					pauseDelay={3000}
