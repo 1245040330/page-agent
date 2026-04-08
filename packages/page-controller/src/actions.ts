@@ -4,6 +4,9 @@
  */
 import type { InteractiveElementDomNode } from './dom/dom_tree/type'
 import {
+	clickPointer,
+	disablePassThrough,
+	enablePassThrough,
 	getNativeValueSetter,
 	isHTMLElement,
 	isInputElement,
@@ -42,19 +45,20 @@ let lastClickedElement: HTMLElement | null = null
 
 function blurLastClickedElement() {
 	if (lastClickedElement) {
+		lastClickedElement.dispatchEvent(new PointerEvent('pointerout', { bubbles: true }))
+		lastClickedElement.dispatchEvent(new PointerEvent('pointerleave', { bubbles: false }))
+		lastClickedElement.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }))
+		lastClickedElement.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))
 		lastClickedElement.blur()
-		lastClickedElement.dispatchEvent(
-			new MouseEvent('mouseout', { bubbles: true, cancelable: true })
-		)
-		lastClickedElement.dispatchEvent(
-			new MouseEvent('mouseleave', { bubbles: false, cancelable: true })
-		)
 		lastClickedElement = null
 	}
 }
 
 /**
- * Simulate a click on the element
+ * Simulate a full click following W3C Pointer Events + UI Events spec order:
+ * pointerover/enter → mouseover/enter → pointerdown → mousedown → [focus] →
+ * pointerup → mouseup → click
+ *
  * @private Internal method, subject to change at any time.
  */
 export async function clickElement(element: HTMLElement) {
@@ -63,32 +67,62 @@ export async function clickElement(element: HTMLElement) {
 	lastClickedElement = element
 
 	await scrollIntoViewIfNeeded(element)
-	// Scroll the iframe element itself into view if needed
 	const frame = element.ownerDocument.defaultView?.frameElement
 	if (frame) await scrollIntoViewIfNeeded(frame)
 
-	await movePointerToElement(element)
-	window.dispatchEvent(new CustomEvent('PageAgent::ClickPointer'))
+	const rect = element.getBoundingClientRect()
+	const x = rect.left + rect.width / 2
+	const y = rect.top + rect.height / 2
+
+	await movePointerToElement(element, x, y)
+	await clickPointer()
 
 	await waitFor(0.1)
 
-	// hover it
-	element.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, cancelable: true }))
-	element.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }))
+	// Hit-test to find the deepest element at click coordinates, matching
+	// real browser behavior where events target the innermost element.
+	// @note This may hit a element in the blacklist
+	// TODO: This is a temporary workaround. Should have been handled during dom extraction.
+	const doc = element.ownerDocument
+	await enablePassThrough()
+	const hitTarget = doc.elementFromPoint(x, y)
+	await disablePassThrough()
+	const target =
+		hitTarget instanceof HTMLElement && element.contains(hitTarget) ? hitTarget : element
 
-	// dispatch a sequence of events to ensure all listeners are triggered
-	element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+	const pointerOpts = {
+		bubbles: true,
+		cancelable: true,
+		clientX: x,
+		clientY: y,
+		pointerType: 'mouse',
+	}
+	const mouseOpts = { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }
 
-	// focus it to ensure it gets the click event
-	element.focus()
+	// Hover — pointer events first, then mouse events (spec order)
+	target.dispatchEvent(new PointerEvent('pointerover', pointerOpts))
+	target.dispatchEvent(new PointerEvent('pointerenter', { ...pointerOpts, bubbles: false }))
+	target.dispatchEvent(new MouseEvent('mouseover', mouseOpts))
+	target.dispatchEvent(new MouseEvent('mouseenter', { ...mouseOpts, bubbles: false }))
 
-	element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }))
-	element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+	// Press
+	target.dispatchEvent(new PointerEvent('pointerdown', pointerOpts))
+	target.dispatchEvent(new MouseEvent('mousedown', mouseOpts))
 
-	// dispatch a click event
-	// element.click()
+	// Focus is not part of the standard pointer/mouse event sequence
+	// "undefined and varies between user agents".
+	// We focus the original element (nearest focusable ancestor), not the hit-test target, matching browser behavior.
+	element.focus({ preventScroll: true })
 
-	await waitFor(0.2) // Wait to ensure click event processing completes
+	// Release
+	target.dispatchEvent(new PointerEvent('pointerup', pointerOpts))
+	target.dispatchEvent(new MouseEvent('mouseup', mouseOpts))
+
+	// Click — activation behavior (navigation, form submit, etc.) triggers
+	// via bubbling from target up to the interactive ancestor.
+	target.click()
+
+	await waitFor(0.2)
 }
 
 /**
@@ -240,14 +274,7 @@ export async function scrollIntoViewIfNeeded(element: Element) {
 	}
 }
 
-/**
- * @private Internal method, subject to change at any time.
- */
-export async function scrollVertically(
-	down: boolean,
-	scroll_amount: number,
-	element?: HTMLElement | null
-) {
+export async function scrollVertically(scroll_amount: number, element?: HTMLElement | null) {
 	// Element-specific scrolling if element is provided
 	if (element) {
 		const targetElement = element
@@ -260,7 +287,10 @@ export async function scrollVertically(
 
 		while (currentElement && attempts < 10) {
 			const computedStyle = window.getComputedStyle(currentElement)
-			const hasScrollableY = /(auto|scroll|overlay)/.test(computedStyle.overflowY)
+			const hasScrollableY =
+				/(auto|scroll|overlay)/.test(computedStyle.overflowY) ||
+				(computedStyle.scrollbarWidth && computedStyle.scrollbarWidth !== 'auto') ||
+				(computedStyle.scrollbarGutter && computedStyle.scrollbarGutter !== 'auto')
 			const canScrollVertically = currentElement.scrollHeight > currentElement.clientHeight
 
 			if (hasScrollableY && canScrollVertically) {
@@ -312,8 +342,19 @@ export async function scrollVertically(
 		el.scrollHeight > el.clientHeight &&
 		bigEnough(el)
 
+	// @deprecated Heuristic container search.
+	// Unreliable in multi-panel layouts. Should guide LLMs to use indexed scroll for consistency.
+	// TODO: remove this fallback
+
+	// try to find the nearest scrollable container
+	// document.activeElement is usually body.
+	// After a successful element.focus(), activeElement become the nearest focusable parent
+
 	let el: HTMLElement | null = document.activeElement as HTMLElement | null
 	while (el && !canScroll(el) && el !== document.body) el = el.parentElement
+
+	// Something is wrong if it falls back to global '*' search
+	// TODO: Return error message instead of global '*' search
 
 	el = canScroll(el)
 		? el
@@ -345,6 +386,10 @@ export async function scrollVertically(
 		return `✅ Scrolled page by ${scrolled}px.`
 	} else {
 		// Container scroll
+
+		const warningMsg = `The document is not scrollable. Falling back to container scroll.`
+		console.log(`[PageController] ${warningMsg}`)
+
 		const scrollBefore = el!.scrollTop
 		const scrollMax = el!.scrollHeight - el!.clientHeight
 
@@ -356,29 +401,22 @@ export async function scrollVertically(
 
 		if (Math.abs(scrolled) < 1) {
 			return dy > 0
-				? `⚠️ Already at the bottom of container (${el!.tagName}), cannot scroll down further.`
-				: `⚠️ Already at the top of container (${el!.tagName}), cannot scroll up further.`
+				? `⚠️ ${warningMsg} Already at the bottom of container (${el!.tagName}), cannot scroll down further.`
+				: `⚠️ ${warningMsg} Already at the top of container (${el!.tagName}), cannot scroll up further.`
 		}
 
 		const reachedBottom = dy > 0 && scrollAfter >= scrollMax - 1
 		const reachedTop = dy < 0 && scrollAfter <= 1
 
 		if (reachedBottom)
-			return `✅ Scrolled container (${el!.tagName}) by ${scrolled}px. Reached the bottom.`
+			return `✅ ${warningMsg} Scrolled container (${el!.tagName}) by ${scrolled}px. Reached the bottom.`
 		if (reachedTop)
-			return `✅ Scrolled container (${el!.tagName}) by ${scrolled}px. Reached the top.`
-		return `✅ Scrolled container (${el!.tagName}) by ${scrolled}px.`
+			return `✅ ${warningMsg} Scrolled container (${el!.tagName}) by ${scrolled}px. Reached the top.`
+		return `✅ ${warningMsg} Scrolled container (${el!.tagName}) by ${scrolled}px.`
 	}
 }
 
-/**
- * @private Internal method, subject to change at any time.
- */
-export async function scrollHorizontally(
-	right: boolean,
-	scroll_amount: number,
-	element?: HTMLElement | null
-) {
+export async function scrollHorizontally(scroll_amount: number, element?: HTMLElement | null) {
 	// Element-specific scrolling if element is provided
 	if (element) {
 		const targetElement = element
@@ -387,11 +425,14 @@ export async function scrollHorizontally(
 		let scrolledElement: HTMLElement | null = null
 		let scrollDelta = 0
 		let attempts = 0
-		const dx = right ? scroll_amount : -scroll_amount
+		const dx = scroll_amount
 
 		while (currentElement && attempts < 10) {
 			const computedStyle = window.getComputedStyle(currentElement)
-			const hasScrollableX = /(auto|scroll|overlay)/.test(computedStyle.overflowX)
+			const hasScrollableX =
+				/(auto|scroll|overlay)/.test(computedStyle.overflowX) ||
+				(computedStyle.scrollbarWidth && computedStyle.scrollbarWidth !== 'auto') ||
+				(computedStyle.scrollbarGutter && computedStyle.scrollbarGutter !== 'auto')
 			const canScrollHorizontally = currentElement.scrollWidth > currentElement.clientWidth
 
 			if (hasScrollableX && canScrollHorizontally) {
@@ -435,13 +476,17 @@ export async function scrollHorizontally(
 
 	// Page-level scrolling (default or fallback)
 
-	const dx = right ? scroll_amount : -scroll_amount
+	const dx = scroll_amount
+
 	const bigEnough = (el: HTMLElement) => el.clientWidth >= window.innerWidth * 0.5
 	const canScroll = (el: HTMLElement | null) =>
 		el &&
 		/(auto|scroll|overlay)/.test(getComputedStyle(el).overflowX) &&
 		el.scrollWidth > el.clientWidth &&
 		bigEnough(el)
+
+	// @deprecated Same heuristic container search as scrollVertically.
+	// TODO: Remove once LLMs reliably use indexed scrolling via data-scrollable.
 
 	let el: HTMLElement | null = document.activeElement as HTMLElement | null
 	while (el && !canScroll(el) && el !== document.body) el = el.parentElement
@@ -477,6 +522,9 @@ export async function scrollHorizontally(
 		return `✅ Scrolled page horizontally by ${scrolled}px.`
 	} else {
 		// Container scroll
+		const warningMsg = `The document is not scrollable. Falling back to container scroll.`
+		console.log(`[PageController] ${warningMsg}`)
+
 		const scrollBefore = el!.scrollLeft
 		const scrollMax = el!.scrollWidth - el!.clientWidth
 
@@ -488,17 +536,17 @@ export async function scrollHorizontally(
 
 		if (Math.abs(scrolled) < 1) {
 			return dx > 0
-				? `⚠️ Already at the right edge of container (${el!.tagName}), cannot scroll right further.`
-				: `⚠️ Already at the left edge of container (${el!.tagName}), cannot scroll left further.`
+				? `⚠️ ${warningMsg} Already at the right edge of container (${el!.tagName}), cannot scroll right further.`
+				: `⚠️ ${warningMsg} Already at the left edge of container (${el!.tagName}), cannot scroll left further.`
 		}
 
 		const reachedRight = dx > 0 && scrollAfter >= scrollMax - 1
 		const reachedLeft = dx < 0 && scrollAfter <= 1
 
 		if (reachedRight)
-			return `✅ Scrolled container (${el!.tagName}) by ${scrolled}px. Reached the right edge.`
+			return `✅ ${warningMsg} Scrolled container (${el!.tagName}) by ${scrolled}px. Reached the right edge.`
 		if (reachedLeft)
-			return `✅ Scrolled container (${el!.tagName}) by ${scrolled}px. Reached the left edge.`
-		return `✅ Scrolled container (${el!.tagName}) horizontally by ${scrolled}px.`
+			return `✅ ${warningMsg} Scrolled container (${el!.tagName}) by ${scrolled}px. Reached the left edge.`
+		return `✅ ${warningMsg} Scrolled container (${el!.tagName}) horizontally by ${scrolled}px.`
 	}
 }

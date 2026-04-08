@@ -1,7 +1,7 @@
 {
     "name": "@page-agent/mcp",
     "private": false,
-    "version": "1.6.2",
+    "version": "1.7.1",
     "type": "module",
     "bin": {
         "page-agent-mcp": "src/index.js"
@@ -28,7 +28,7 @@
         "node": ">=20"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.27.1",
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "ws": "^8.20.0",
         "zod": "^4.3.5"
     }
